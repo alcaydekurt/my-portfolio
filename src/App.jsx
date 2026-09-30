@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import SchoolHub from "./components/SchoolHub";
@@ -26,6 +26,7 @@ import {
   getStoredSkills,
   saveSkillsToStorage
 } from "./data/initialData";
+import { fetchCloudData, saveCloudData } from "./services/cloudStore";
 
 export default function App() {
   // Theme state: dark mode toggle
@@ -116,6 +117,9 @@ export default function App() {
     showToast("Downloaded coursework JSON backup!");
   };
 
+  // Cloud sync ref — prevents writing back to cloud during initial cloud load
+  const cloudLoadedRef = useRef(false);
+
   // Files State Management (synced with localStorage)
   const [files, setFiles] = useState(() => getStoredFiles());
   const [trashFiles, setTrashFiles] = useState(() => getStoredTrash());
@@ -134,7 +138,41 @@ export default function App() {
     setSkills(updatedSkills);
     saveSkillsToStorage(updatedSkills);
     showToast("Skills & Technologies updated!");
+    saveAllCloud({ skills: updatedSkills });
   };
+
+  // ── Cloud sync helpers ────────────────────────────────────────────────────
+  // Bundles all current state and writes to JSONBin (admin only, fire-and-forget)
+  const saveAllCloud = useCallback((overrides = {}) => {
+    const data = {
+      profile,
+      education,
+      skills,
+      files,
+      trash: trashFiles,
+      ...overrides,
+    };
+    saveCloudData(data).then((ok) => {
+      if (!ok) console.warn("Cloud sync failed — changes saved locally only.");
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, education, skills, files, trashFiles]);
+
+  // On mount: fetch cloud data once and hydrate all state for EVERY visitor
+  useEffect(() => {
+    fetchCloudData().then((data) => {
+      if (data) {
+        if (data.profile)   { setProfile(data.profile);     saveProfileToStorage(data.profile); }
+        if (data.education) { setEducation(data.education); saveEducationToStorage(data.education); }
+        if (data.skills)    { setSkills(data.skills);       saveSkillsToStorage(data.skills); }
+        if (data.files)     { setFiles(data.files);         saveFilesToStorage(data.files); }
+        if (data.trash)     { setTrashFiles(data.trash);    saveTrashToStorage(data.trash); }
+      }
+      cloudLoadedRef.current = true;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleSaveProfile = ({ profile: newProfile, education: newEdu }) => {
     setProfile(newProfile);
@@ -142,6 +180,7 @@ export default function App() {
     setEducation(newEdu);
     saveEducationToStorage(newEdu);
     showToast("About section updated successfully!");
+    saveAllCloud({ profile: newProfile, education: newEdu });
   };
 
   // Modals state
@@ -166,12 +205,14 @@ export default function App() {
     setFiles(updated);
     saveFilesToStorage(updated);
     showToast(`"${newFile.title}" successfully added to School Hub!`);
+    saveAllCloud({ files: updated });
   };
 
   // Reorder files handler (via drag and drop)
   const handleReorderFiles = (reorderedFiles) => {
     setFiles(reorderedFiles);
     saveFilesToStorage(reorderedFiles);
+    saveAllCloud({ files: reorderedFiles });
   };
 
   // Move file to Trash (via drag to delete or delete button)
@@ -196,6 +237,7 @@ export default function App() {
     saveTrashToStorage(updatedTrash);
 
     showToast(`Moved "${fileToDelete.title}" to Recycle Bin.`, "info");
+    saveAllCloud({ files: updatedFiles, trash: updatedTrash });
     if (previewFile?.id === fileId) {
       setPreviewFile(null);
     }
@@ -217,6 +259,7 @@ export default function App() {
     saveTrashToStorage(updatedTrash);
 
     showToast(`Restored "${cleanedFile.title}" to vault!`, "success");
+    saveAllCloud({ files: updatedFiles, trash: updatedTrash });
   };
 
   // Permanently delete an item from Trash
@@ -232,6 +275,7 @@ export default function App() {
       setTrashFiles(updatedTrash);
       saveTrashToStorage(updatedTrash);
       showToast("Item permanently removed.", "info");
+      saveAllCloud({ trash: updatedTrash });
     }
   };
 
@@ -247,6 +291,7 @@ export default function App() {
       setTrashFiles([]);
       saveTrashToStorage([]);
       showToast("Recycle Bin emptied.", "info");
+      saveAllCloud({ trash: [] });
     }
   };
 
@@ -268,6 +313,7 @@ export default function App() {
     saveTrashToStorage(updatedTrash);
 
     showToast(`Moved ${toTrash.length} item(s) to Recycle Bin.`, "info");
+    saveAllCloud({ files: remainingFiles, trash: updatedTrash });
     if (previewFile && fileIds.includes(previewFile.id)) {
       setPreviewFile(null);
     }
@@ -289,6 +335,7 @@ export default function App() {
     saveTrashToStorage(remainingTrash);
 
     showToast(`Restored ${toRestore.length} item(s) to vault!`, "success");
+    saveAllCloud({ files: updatedFiles, trash: remainingTrash });
   };
 
   // Batch Permanent Delete from Trash
@@ -303,6 +350,7 @@ export default function App() {
       setTrashFiles(remainingTrash);
       saveTrashToStorage(remainingTrash);
       showToast(`Permanently removed ${fileIds.length} item(s).`, "info");
+      saveAllCloud({ trash: remainingTrash });
     }
   };
 
