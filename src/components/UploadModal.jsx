@@ -16,6 +16,7 @@ import {
 import { GithubIcon } from "./BrandIcons";
 import { CATEGORIES } from "../data/initialData";
 import confetti from "canvas-confetti";
+import { storeFileInDB } from "../utils/fileStorage";
 
 export default function UploadModal({ isOpen, onClose, onAddFile, defaultCategory }) {
   const [submissionMode, setSubmissionMode] = useState("file"); // 'file' | 'project-url'
@@ -126,7 +127,7 @@ export default function UploadModal({ isOpen, onClose, onAddFile, defaultCategor
     }, 120);
   };
 
-  const finishUpload = () => {
+  const finishUpload = async () => {
     setIsUploading(false);
 
     // Fire celebration confetti!
@@ -184,6 +185,38 @@ export default function UploadModal({ isOpen, onClose, onAddFile, defaultCategor
       const type = getFileType(selectedFile.name);
       const sizeMB = (selectedFile.size / (1024 * 1024)).toFixed(1) + " MB";
 
+      // Read real binary file as Data URL
+      let dataUrl = "";
+      try {
+        dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(selectedFile);
+        });
+      } catch (err) {
+        console.warn("Could not read file as DataURL:", err);
+      }
+
+      // Read text snippet if code or text file
+      let codeSnippet = "";
+      const ext = selectedFile.name.split(".").pop().toLowerCase();
+      if (type === "code" || ["txt", "md", "json", "html", "css", "js", "jsx", "ts", "tsx", "py", "sql"].includes(ext)) {
+        try {
+          codeSnippet = await new Promise((resolve) => {
+            const textReader = new FileReader();
+            textReader.onload = () => resolve((textReader.result || "").slice(0, 5000));
+            textReader.onerror = () => resolve("");
+            textReader.readAsText(selectedFile);
+          });
+        } catch (e) {}
+      }
+
+      // Store in IndexedDB for reliable persistence
+      if (dataUrl) {
+        await storeFileInDB(newId, dataUrl, selectedFile.name, selectedFile.type);
+      }
+
       newFileItem = {
         id: newId,
         title: title.trim(),
@@ -191,6 +224,8 @@ export default function UploadModal({ isOpen, onClose, onAddFile, defaultCategor
         fileType: type,
         fileName: selectedFile.name,
         fileSize: sizeMB,
+        mimeType: selectedFile.type || "application/octet-stream",
+        fileData: dataUrl || undefined,
         uploadDate: new Date().toISOString().split("T")[0],
         submissionDate: new Date().toLocaleString(),
         dueDate: dueDate,
@@ -199,11 +234,13 @@ export default function UploadModal({ isOpen, onClose, onAddFile, defaultCategor
         description: description.trim() || "Coursework submission for DCIT 26.",
         tags: parsedTags,
         downloadUrl: "#",
+        thumbnail: type === "image" && dataUrl ? dataUrl : undefined,
         previewContent: {
-          type: type === "pdf" ? "pdf-doc" : type === "code" ? "code" : "document",
+          type: type === "pdf" ? "pdf-doc" : type === "code" ? "code" : type === "image" ? "image" : "document",
           title: title.trim(),
           fileName: selectedFile.name,
           author: "Kurt Joshua Alcayde",
+          codeSnippet: codeSnippet || undefined,
           snippet: `File: ${selectedFile.name}\nSize: ${sizeMB}\nStatus: Verified Upload\nCourse: DCIT 26`
         }
       };

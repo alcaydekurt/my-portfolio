@@ -198,6 +198,24 @@ export default function FilePreviewModal({ file, isOpen, onClose, onDownload }) 
                 <pre>{file.previewContent?.codeSnippet || `// File: ${file.fileName}\n// Lab activity deliverables packaged into archive.\n// Verified against DCIT 26 rubrics.`}</pre>
               </div>
             </div>
+          ) : file.fileType === "image" && file.fileData ? (
+            /* REAL IMAGE PREVIEW */
+            <div className="flex justify-center p-4 bg-slate-100 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <img
+                src={file.fileData}
+                alt={file.title}
+                className="max-h-[520px] rounded-xl object-contain shadow-md"
+              />
+            </div>
+          ) : file.fileType === "pdf" && file.fileData ? (
+            /* REAL EMBEDDED PDF VIEWER */
+            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md bg-slate-900">
+              <iframe
+                src={file.fileData}
+                title={file.title}
+                className="w-full h-[540px] border-none"
+              />
+            </div>
           ) : (
             /* DOCUMENT / PDF VIEWER SIMULATOR */
             <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-950">

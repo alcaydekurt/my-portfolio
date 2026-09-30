@@ -27,6 +27,8 @@ import {
   saveSkillsToStorage
 } from "./data/initialData";
 import { fetchCloudData, saveCloudData } from "./services/cloudStore";
+import { downloadFileSafely } from "./utils/fileDownloader";
+import { getAllStoredFilesFromDB, removeFileFromDB } from "./utils/fileStorage";
 
 export default function App() {
   // Theme state: dark mode toggle
@@ -169,6 +171,24 @@ export default function App() {
         if (data.trash)     { setTrashFiles(data.trash);    saveTrashToStorage(data.trash); }
       }
       cloudLoadedRef.current = true;
+
+      // Hydrate any uploaded binary files stored in IndexedDB
+      getAllStoredFilesFromDB().then((storedMap) => {
+        if (storedMap && Object.keys(storedMap).length > 0) {
+          setFiles((prev) =>
+            prev.map((f) => {
+              if (storedMap[f.id]) {
+                return {
+                  ...f,
+                  fileData: storedMap[f.id].fileData,
+                  mimeType: storedMap[f.id].mimeType || f.mimeType,
+                };
+              }
+              return f;
+            })
+          );
+        }
+      });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -274,6 +294,7 @@ export default function App() {
       const updatedTrash = trashFiles.filter((f) => f.id !== fileId);
       setTrashFiles(updatedTrash);
       saveTrashToStorage(updatedTrash);
+      removeFileFromDB(fileId);
       showToast("Item permanently removed.", "info");
       saveAllCloud({ trash: updatedTrash });
     }
@@ -349,6 +370,7 @@ export default function App() {
       const remainingTrash = trashFiles.filter((f) => !fileIds.includes(f.id));
       setTrashFiles(remainingTrash);
       saveTrashToStorage(remainingTrash);
+      fileIds.forEach((id) => removeFileFromDB(id));
       showToast(`Permanently removed ${fileIds.length} item(s).`, "info");
       saveAllCloud({ trash: remainingTrash });
     }
@@ -377,23 +399,15 @@ export default function App() {
     }
   };
 
-  // Download simulation handler (always functional for all users!)
-  const handleDownloadFile = (file) => {
-    const filename = file.fileName || `${file.title.toLowerCase().replace(/\s+/g, "_")}.pdf`;
-    
-    // Create a text/binary blob to trigger actual browser download
-    const blobContent = `CAVITE STATE UNIVERSITY\nCollege of Engineering & Information Technology\nCourse: DCIT 26 Application Development and Emerging Technologies\n\nTitle: ${file.title}\nCategory: ${file.category}\nStatus: ${file.status}\nScore: ${file.score || "N/A"}\nAuthor: Kurt Joshua Alcayde\n\nDescription:\n${file.description}\n\nGenerated on: ${new Date().toLocaleString()}`;
-    const blob = new Blob([blobContent], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    showToast(`Downloading deliverable: ${filename}`);
+  // Safe, uncorrupted download handler for real uploaded files and academic deliverables
+  const handleDownloadFile = async (file) => {
+    try {
+      showToast(`Downloading: ${file.fileName || file.title}...`);
+      await downloadFileSafely(file);
+    } catch (err) {
+      console.error("Download error:", err);
+      showToast("Download failed. Please try again.", "error");
+    }
   };
 
   const handleOpenUpload = (cat = "laboratory") => {

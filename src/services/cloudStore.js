@@ -39,6 +39,30 @@ export async function fetchCloudData() {
   }
 }
 
+function sanitizeForCloud(data) {
+  if (!data) return data;
+  const clone = { ...data };
+  if (Array.isArray(clone.files)) {
+    clone.files = clone.files.map((f) => {
+      if (f.fileData && f.fileData.length > 25000) {
+        const { fileData, ...rest } = f;
+        return rest;
+      }
+      return f;
+    });
+  }
+  if (Array.isArray(clone.trash)) {
+    clone.trash = clone.trash.map((f) => {
+      if (f.fileData && f.fileData.length > 25000) {
+        const { fileData, ...rest } = f;
+        return rest;
+      }
+      return f;
+    });
+  }
+  return clone;
+}
+
 /** Write all portfolio data to the cloud bin.
  *  Called by admin after any save action.
  *  data = { profile, education, skills, files, trash }
@@ -46,10 +70,11 @@ export async function fetchCloudData() {
 export async function saveCloudData(data) {
   if (!BIN_ID || !API_KEY) return false;
   try {
+    const payload = sanitizeForCloud(data);
     const res = await fetch(BASE_URL, {
       method: "PUT",
       headers: HEADERS_WRITE,
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`JSONBin write failed: ${res.status}`);
     return true;
