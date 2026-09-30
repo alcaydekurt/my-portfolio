@@ -237,6 +237,62 @@ export default function App() {
     }
   };
 
+  // Batch Move to Trash (Multiple selection)
+  const handleBatchMoveToTrash = (fileIds) => {
+    if (!isAdmin || !fileIds || !fileIds.length) return;
+    const toTrash = files.filter((f) => fileIds.includes(f.id));
+    if (!toTrash.length) return;
+
+    const remainingFiles = files.filter((f) => !fileIds.includes(f.id));
+    const updatedTrash = [
+      ...toTrash.map((f) => ({ ...f, deletedAt: new Date().toISOString() })),
+      ...trashFiles.filter((t) => !fileIds.includes(t.id))
+    ];
+
+    setFiles(remainingFiles);
+    saveFilesToStorage(remainingFiles);
+    setTrashFiles(updatedTrash);
+    saveTrashToStorage(updatedTrash);
+
+    showToast(`Moved ${toTrash.length} item(s) to Recycle Bin.`, "info");
+    if (previewFile && fileIds.includes(previewFile.id)) {
+      setPreviewFile(null);
+    }
+  };
+
+  // Batch Restore from Trash
+  const handleBatchRestoreFromTrash = (fileIds) => {
+    if (!isAdmin || !fileIds || !fileIds.length) return;
+    const toRestore = trashFiles.filter((f) => fileIds.includes(f.id));
+    if (!toRestore.length) return;
+
+    const remainingTrash = trashFiles.filter((f) => !fileIds.includes(f.id));
+    const restoredCleaned = toRestore.map(({ deletedAt, ...f }) => f);
+    const updatedFiles = [...restoredCleaned, ...files];
+
+    setFiles(updatedFiles);
+    saveFilesToStorage(updatedFiles);
+    setTrashFiles(remainingTrash);
+    saveTrashToStorage(remainingTrash);
+
+    showToast(`Restored ${toRestore.length} item(s) to vault!`, "success");
+  };
+
+  // Batch Permanent Delete from Trash
+  const handleBatchPermanentDelete = (fileIds) => {
+    if (!isAdmin || !fileIds || !fileIds.length) return;
+    if (
+      window.confirm(
+        `Permanently delete ${fileIds.length} item(s)? This cannot be undone.`
+      )
+    ) {
+      const remainingTrash = trashFiles.filter((f) => !fileIds.includes(f.id));
+      setTrashFiles(remainingTrash);
+      saveTrashToStorage(remainingTrash);
+      showToast(`Permanently removed ${fileIds.length} item(s).`, "info");
+    }
+  };
+
   // Delete file handler (wrapper for move to trash)
   const handleDeleteFile = (fileId) => {
     handleMoveToTrash(fileId);
@@ -320,8 +376,11 @@ export default function App() {
           onDeleteFile={handleDeleteFile}
           onReorderFiles={handleReorderFiles}
           onMoveToTrash={handleMoveToTrash}
+          onBatchMoveToTrash={handleBatchMoveToTrash}
           onRestoreFromTrash={handleRestoreFromTrash}
+          onBatchRestoreFromTrash={handleBatchRestoreFromTrash}
           onPermanentDelete={handlePermanentDelete}
+          onBatchPermanentDelete={handleBatchPermanentDelete}
           onEmptyTrash={handleEmptyTrash}
           onResetFiles={handleResetFiles}
           onDownloadFile={handleDownloadFile}

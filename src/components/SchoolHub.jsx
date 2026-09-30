@@ -30,9 +30,11 @@ import {
   Lock,
   Unlock,
   GripVertical,
-  Undo2,
-  Trash,
-  Info
+  Check,
+  CheckSquare,
+  Square,
+  X,
+  Trash
 } from "lucide-react";
 import { GithubIcon } from "./BrandIcons";
 
@@ -56,8 +58,11 @@ export default function SchoolHub({
   onDeleteFile,
   onReorderFiles,
   onMoveToTrash,
+  onBatchMoveToTrash,
   onRestoreFromTrash,
+  onBatchRestoreFromTrash,
   onPermanentDelete,
+  onBatchPermanentDelete,
   onEmptyTrash,
   onResetFiles,
   onDownloadFile,
@@ -69,11 +74,20 @@ export default function SchoolHub({
   const [fileTypeFilter, setFileTypeFilter] = useState("all"); // 'all' | 'pdf' | 'zip' | 'docx' | 'url'
   const [sortBy, setSortBy] = useState("custom"); // 'custom' | 'newest' | 'oldest' | 'name'
 
+  // Multi-selection state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   // Drag & drop state
   const [draggedFile, setDraggedFile] = useState(null);
   const [isDraggingActive, setIsDraggingActive] = useState(false);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [isOverTrashZone, setIsOverTrashZone] = useState(false);
+
+  // Clear selection on category switch
+  const handleCategorySwitch = (catId) => {
+    setActiveCategory(catId);
+    setSelectedIds(new Set());
+  };
 
   // Filtered and sorted files
   const filteredFiles = useMemo(() => {
@@ -165,6 +179,59 @@ export default function SchoolHub({
     }
   };
 
+  // Multi-Selection Handlers
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = (targetList) => {
+    const allIds = targetList.map((f) => f.id);
+    const areAllSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+    if (areAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchDelete = () => {
+    if (!isAdmin || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    if (activeCategory === "trash") {
+      if (onBatchPermanentDelete) {
+        onBatchPermanentDelete(ids);
+      }
+    } else {
+      if (onBatchMoveToTrash) {
+        onBatchMoveToTrash(ids);
+      } else if (onDeleteFile) {
+        ids.forEach((id) => onDeleteFile(id));
+      }
+    }
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchRestore = () => {
+    if (!isAdmin || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    if (onBatchRestoreFromTrash) {
+      onBatchRestoreFromTrash(ids);
+    }
+    setSelectedIds(new Set());
+  };
+
   // Drag Handlers
   const handleDragStart = (e, file) => {
     setDraggedFile(file);
@@ -225,16 +292,30 @@ export default function SchoolHub({
       return;
     }
 
-    if (onMoveToTrash) {
-      onMoveToTrash(draggedFile.id);
-    } else if (onDeleteFile) {
-      onDeleteFile(draggedFile.id);
+    // If dragged item is part of multi-selection, delete ALL selected items
+    if (selectedIds.has(draggedFile.id) && selectedIds.size > 1) {
+      const ids = Array.from(selectedIds);
+      if (onBatchMoveToTrash) {
+        onBatchMoveToTrash(ids);
+      } else if (onDeleteFile) {
+        ids.forEach((id) => onDeleteFile(id));
+      }
+      setSelectedIds(new Set());
+    } else {
+      if (onMoveToTrash) {
+        onMoveToTrash(draggedFile.id);
+      } else if (onDeleteFile) {
+        onDeleteFile(draggedFile.id);
+      }
     }
 
     setDraggedFile(null);
     setIsDraggingActive(false);
     setIsOverTrashZone(false);
   };
+
+  const currentVisibleList = activeCategory === "trash" ? trashFiles : filteredFiles;
+  const isAllSelected = currentVisibleList.length > 0 && currentVisibleList.every((f) => selectedIds.has(f.id));
 
   return (
     <section id="school-hub" className="py-20 md:py-28 relative">
@@ -258,7 +339,7 @@ export default function SchoolHub({
               Explore laboratory outputs, homework assignments, project repositories, and exam materials. 
               {isAdmin && (
                 <span className="text-rose-600 dark:text-rose-400 font-semibold block mt-1">
-                  ✨ Drag cards to rearrange their order, or drag them into the Deletion dropzone to remove them.
+                  ✨ Multi-select cards with checkboxes, drag to rearrange, or drag multiple items into the Deletion dropzone.
                 </span>
               )}
             </p>
@@ -306,7 +387,7 @@ export default function SchoolHub({
           <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-none">
             {/* "All Works" Tab */}
             <button
-              onClick={() => setActiveCategory("all")}
+              onClick={() => handleCategorySwitch("all")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all duration-200 cursor-pointer ${
                 activeCategory === "all"
                   ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
@@ -334,7 +415,7 @@ export default function SchoolHub({
               return (
                 <button
                   key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
+                  onClick={() => handleCategorySwitch(cat.id)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all duration-200 cursor-pointer ${
                     isActive
                       ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
@@ -359,7 +440,7 @@ export default function SchoolHub({
             {/* DELETION PAGE TAB (Recycle Bin) */}
             {isAdmin && (
               <button
-                onClick={() => setActiveCategory("trash")}
+                onClick={() => handleCategorySwitch("trash")}
                 onDragOver={(e) => {
                   e.preventDefault();
                   setIsOverTrashZone(true);
@@ -422,7 +503,9 @@ export default function SchoolHub({
                 <Trash2 className="w-8 h-8" />
               </div>
               <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                {isOverTrashZone ? "Release to Delete Card" : "Drop Cards Here to Delete"}
+                {isOverTrashZone
+                  ? `Release to Delete ${selectedIds.size > 1 ? `${selectedIds.size} Selected Items` : "Card"}`
+                  : "Drop Cards Here to Delete"}
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mt-1.5">
                 Drag any schoolwork card from any category and drop it onto this page to move it to the Recycle Bin.
@@ -430,18 +513,24 @@ export default function SchoolHub({
             </div>
 
             {/* Trash Header Controls */}
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-3">
                 <span className="text-sm font-bold text-slate-900 dark:text-white">
                   Deleted Files ({trashFiles.length})
                 </span>
-                <span className="text-xs text-slate-500">
-                  • Items remain recoverable until emptied
-                </span>
+                {trashFiles.length > 0 && (
+                  <button
+                    onClick={() => handleSelectAll(trashFiles)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5 text-rose-500" />
+                    <span>{isAllSelected ? "Deselect All" : "Select All"}</span>
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setActiveCategory("all")}
+                  onClick={() => handleCategorySwitch("all")}
                   className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
                   ← Back to Vault
@@ -473,12 +562,32 @@ export default function SchoolHub({
                 {trashFiles.map((file) => {
                   const badge = getFileBadge(file);
                   const BadgeIcon = badge.icon;
+                  const isSelected = selectedIds.has(file.id);
+
                   return (
                     <div
                       key={file.id}
-                      className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between opacity-80 hover:opacity-100 transition-opacity"
+                      className={`relative p-5 rounded-2xl bg-white dark:bg-slate-900 border shadow-sm flex flex-col justify-between transition-all ${
+                        isSelected
+                          ? "border-rose-500 ring-2 ring-rose-500 bg-rose-50/20 dark:bg-rose-950/20"
+                          : "border-slate-200 dark:border-slate-800 opacity-85 hover:opacity-100"
+                      }`}
                     >
-                      <div>
+                      {/* Checkbox */}
+                      <button
+                        type="button"
+                        onClick={() => toggleSelect(file.id)}
+                        className={`absolute top-3 left-3 z-10 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                          isSelected
+                            ? "bg-rose-600 text-white shadow-xs"
+                            : "border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-rose-400"
+                        }`}
+                        title={isSelected ? "Deselect" : "Select item"}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </button>
+
+                      <div className="pl-7">
                         <div className="flex items-center justify-between mb-2">
                           <span
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badge.color}`}
@@ -543,6 +652,18 @@ export default function SchoolHub({
               {/* Format, Sort & Layout Switcher */}
               <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
                 
+                {/* Select All Button for Admin */}
+                {isAdmin && filteredFiles.length > 0 && (
+                  <button
+                    onClick={() => handleSelectAll(filteredFiles)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                    title={isAllSelected ? "Deselect All" : "Select all filtered files"}
+                  >
+                    <CheckSquare className="w-3.5 h-3.5 text-rose-500" />
+                    <span>{isAllSelected ? "Deselect All" : "Select All"}</span>
+                  </button>
+                )}
+
                 {/* File Type Filter */}
                 <div className="flex items-center gap-1.5">
                   <Filter className="w-3.5 h-3.5 text-slate-400" />
@@ -604,7 +725,7 @@ export default function SchoolHub({
             {isAdmin && filteredFiles.length > 1 && (
               <div className="flex items-center gap-2 px-3 py-1.5 mb-4 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 text-xs w-fit">
                 <GripVertical className="w-3.5 h-3.5 text-rose-500" />
-                <span>Drag any card by its handle to rearrange, or drag it into the bottom trash bin to delete.</span>
+                <span>Select multiple cards using checkboxes to delete together, or drag cards to rearrange.</span>
               </div>
             )}
 
@@ -651,7 +772,7 @@ export default function SchoolHub({
               </div>
             ) : viewMode === "grid" ? (
               /* ========================================================
-                 GRID CARD VIEW (Draggable & Reorderable)
+                 GRID CARD VIEW (Draggable, Selectable & Reorderable)
                  ======================================================== */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredFiles.map((file) => {
@@ -660,6 +781,7 @@ export default function SchoolHub({
                   const isProject = file.category === "projects" || file.fileType === "url";
                   const isBeingDragged = draggedFile?.id === file.id;
                   const isDropTarget = dropTargetId === file.id && !isBeingDragged;
+                  const isSelected = selectedIds.has(file.id);
 
                   return (
                     <div
@@ -674,13 +796,34 @@ export default function SchoolHub({
                           ? "opacity-35 scale-95 border-dashed border-rose-500 shadow-none ring-2 ring-rose-400"
                           : isDropTarget
                           ? "border-rose-500 ring-2 ring-rose-500 scale-[1.02] shadow-xl"
+                          : isSelected
+                          ? "border-rose-500 ring-2 ring-rose-500/80 bg-rose-50/20 dark:bg-rose-950/20 shadow-md"
                           : "border-slate-200/90 dark:border-slate-800/90 hover:shadow-xl hover:border-rose-300 dark:hover:border-rose-900/70"
                       } ${isAdmin ? "cursor-grab active:cursor-grabbing" : ""}`}
                     >
+                      {/* Checkbox for Admin Multi-Select */}
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelect(file.id);
+                          }}
+                          className={`absolute top-3 left-3 z-30 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                            isSelected
+                              ? "bg-rose-600 text-white shadow-md ring-2 ring-white dark:ring-slate-900 scale-105"
+                              : "bg-black/35 hover:bg-black/65 text-transparent hover:text-white/60 border border-white/40 backdrop-blur-md"
+                          }`}
+                          title={isSelected ? "Deselect" : "Select item for batch action"}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </button>
+                      )}
+
                       {/* Drag Grip Handle for Admin */}
                       {isAdmin && (
                         <div
-                          className="absolute top-2.5 right-2.5 z-20 p-1.5 rounded-lg bg-black/40 hover:bg-black/70 text-white backdrop-blur-md opacity-60 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+                          className="absolute top-3 right-3 z-20 p-1.5 rounded-lg bg-black/40 hover:bg-black/70 text-white backdrop-blur-md opacity-60 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
                           title="Drag to rearrange card or drop in trash to delete"
                         >
                           <GripVertical className="w-3.5 h-3.5" />
@@ -702,7 +845,7 @@ export default function SchoolHub({
                           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent"></div>
                           
                           {/* Top badges over thumbnail */}
-                          <div className="absolute top-3 left-3 right-10 flex items-center justify-between">
+                          <div className={`absolute top-3 ${isAdmin ? "left-12" : "left-3"} right-11 flex items-center justify-between`}>
                             <span
                               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border backdrop-blur-md ${badge.color}`}
                             >
@@ -751,7 +894,7 @@ export default function SchoolHub({
                       <div className="p-5 flex-1 flex flex-col">
                         {/* Header info (when no thumbnail) */}
                         {(!isProject || !file.thumbnail) && (
-                          <div className="flex items-center justify-between gap-2 mb-3 pr-8">
+                          <div className={`flex items-center justify-between gap-2 mb-3 ${isAdmin ? "pl-7 pr-8" : ""}`}>
                             <span
                               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${badge.color}`}
                             >
@@ -859,13 +1002,24 @@ export default function SchoolHub({
               </div>
             ) : (
               /* ========================================================
-                 TABLE / LIST VIEW (Draggable Rows)
+                 TABLE / LIST VIEW (Draggable & Selectable Rows)
                  ======================================================== */
               <div className="overflow-x-auto bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800/90 rounded-2xl shadow-sm">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">
-                      {isAdmin && <th className="py-3.5 px-3 w-8"></th>}
+                      {isAdmin && (
+                        <th className="py-3.5 px-3 w-8">
+                          <button
+                            onClick={() => handleSelectAll(filteredFiles)}
+                            className="text-slate-400 hover:text-rose-500"
+                            title="Select / Deselect All"
+                          >
+                            {isAllSelected ? <CheckSquare className="w-4 h-4 text-rose-600" /> : <Square className="w-4 h-4" />}
+                          </button>
+                        </th>
+                      )}
+                      {isAdmin && <th className="py-3.5 px-2 w-6"></th>}
                       <th className="py-3.5 px-4">Work / File Title</th>
                       <th className="py-3.5 px-4">Category</th>
                       <th className="py-3.5 px-4">Type &amp; Size</th>
@@ -880,6 +1034,7 @@ export default function SchoolHub({
                       const BadgeIcon = badge.icon;
                       const isBeingDragged = draggedFile?.id === file.id;
                       const isDropTarget = dropTargetId === file.id && !isBeingDragged;
+                      const isSelected = selectedIds.has(file.id);
 
                       return (
                         <tr
@@ -890,11 +1045,35 @@ export default function SchoolHub({
                           onDragOver={(e) => handleDragOverCard(e, file)}
                           onDrop={(e) => handleDropOnCard(e, file)}
                           className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
-                            isBeingDragged ? "opacity-30 bg-rose-50" : isDropTarget ? "bg-rose-100/60 dark:bg-rose-950/40" : ""
+                            isBeingDragged
+                              ? "opacity-30 bg-rose-50"
+                              : isDropTarget
+                              ? "bg-rose-100/60 dark:bg-rose-950/40"
+                              : isSelected
+                              ? "bg-rose-50/30 dark:bg-rose-950/30"
+                              : ""
                           }`}
                         >
+                          {/* Row Checkbox */}
                           {isAdmin && (
-                            <td className="py-3.5 px-3 text-slate-400 cursor-grab active:cursor-grabbing">
+                            <td className="py-3.5 px-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleSelect(file.id)}
+                                className={`w-4 h-4 rounded flex items-center justify-center transition-all ${
+                                  isSelected
+                                    ? "bg-rose-600 text-white shadow-xs"
+                                    : "border border-slate-300 dark:border-slate-600 text-transparent"
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </button>
+                            </td>
+                          )}
+
+                          {/* Grip */}
+                          {isAdmin && (
+                            <td className="py-3.5 px-2 text-slate-400 cursor-grab active:cursor-grabbing">
                               <GripVertical className="w-4 h-4" />
                             </td>
                           )}
@@ -988,6 +1167,59 @@ export default function SchoolHub({
       </div>
 
       {/* ========================================================
+          FLOATING BATCH ACTIONS DOCK (When items are selected)
+          ======================================================== */}
+      {isAdmin && selectedIds.size > 0 && !isDraggingActive && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9990] px-5 py-3 rounded-2xl bg-slate-900/95 dark:bg-black/95 border border-slate-700 text-white shadow-2xl backdrop-blur-xl flex items-center gap-4 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-rose-600 text-white font-mono text-xs font-bold flex items-center justify-center">
+              {selectedIds.size}
+            </span>
+            <span className="text-xs font-semibold text-slate-200">
+              {selectedIds.size === 1 ? "item selected" : "items selected"}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700"></div>
+
+          {activeCategory === "trash" ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBatchRestore}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restore ({selectedIds.size})</span>
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Forever</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleBatchDelete}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedIds.size})</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleClearSelection}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="Deselect All"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ========================================================
           FLOATING DRAG-TO-DELETE DOCK (Active while dragging cards)
           ======================================================== */}
       {isDraggingActive && (
@@ -1016,10 +1248,16 @@ export default function SchoolHub({
           </div>
           <div>
             <div className="font-extrabold text-sm sm:text-base">
-              {isOverTrashZone ? "Release to Delete!" : "Drop Here to Delete"}
+              {isOverTrashZone
+                ? selectedIds.has(draggedFile?.id) && selectedIds.size > 1
+                  ? `Release to Delete ${selectedIds.size} Selected Items!`
+                  : "Release to Delete!"
+                : "Drop Here to Delete"}
             </div>
             <div className="text-xs text-red-200">
-              {draggedFile
+              {selectedIds.has(draggedFile?.id) && selectedIds.size > 1
+                ? `${selectedIds.size} items will be moved to the Recycle Bin`
+                : draggedFile
                 ? `"${draggedFile.title.slice(0, 32)}..." will be moved to Recycle Bin`
                 : "Drag card onto this zone to remove"}
             </div>
