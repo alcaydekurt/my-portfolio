@@ -21,7 +21,8 @@ import {
   Radio,
   Wifi,
   Calendar,
-  CheckCircle2
+  CheckCircle2,
+  Edit3
 } from "lucide-react";
 import { SKILLS_DATA } from "../data/initialData";
 
@@ -49,8 +50,8 @@ const ICON_MAP = {
   Calendar
 };
 
-export default function SkillsSection() {
-  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
+export default function SkillsSection({ skills = SKILLS_DATA, isAdmin = false, onEditSkills }) {
+  const currentSkills = skills && skills.length > 0 ? skills : SKILLS_DATA;
 
   return (
     <section id="skills" className="py-20 md:py-28 relative bg-slate-50/50 dark:bg-slate-900/30">
@@ -69,11 +70,23 @@ export default function SkillsSection() {
             Curated toolkit covering frontend engineering, backend services, cloud deployment, 
             and modern paradigms practiced in DCIT 26.
           </p>
+
+          {/* Admin Edit Button */}
+          {isAdmin && (
+            <button
+              onClick={onEditSkills}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors shadow-sm cursor-pointer"
+              title="Edit Skills & Technologies (Admin only)"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Skills Section</span>
+            </button>
+          )}
         </div>
 
-        {/* 4 Reference-Inspired Skill Category Cards Grid */}
+        {/* Dynamic Skill Category Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {SKILLS_DATA.map((group, groupIdx) => (
+          {currentSkills.map((group, groupIdx) => (
             <div
               key={groupIdx}
               className="bg-white dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-xs hover:shadow-xl hover:border-rose-300 dark:hover:border-rose-900/50 transition-all duration-300 flex flex-col justify-between"

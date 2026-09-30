@@ -4,6 +4,7 @@ import Hero from "./components/Hero";
 import SchoolHub from "./components/SchoolHub";
 import AboutSection from "./components/AboutSection";
 import SkillsSection from "./components/SkillsSection";
+import SkillsEditModal from "./components/SkillsEditModal";
 import ContactSection from "./components/ContactSection";
 import Footer from "./components/Footer";
 import UploadModal from "./components/UploadModal";
@@ -21,7 +22,9 @@ import {
   getStoredEducation,
   saveEducationToStorage,
   getStoredTrash,
-  saveTrashToStorage
+  saveTrashToStorage,
+  getStoredSkills,
+  saveSkillsToStorage
 } from "./data/initialData";
 
 export default function App() {
@@ -122,6 +125,16 @@ export default function App() {
   const [profile, setProfile] = useState(() => getStoredProfile());
   const [education, setEducation] = useState(() => getStoredEducation());
   const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
+
+  // Skills State (synced with localStorage)
+  const [skills, setSkills] = useState(() => getStoredSkills());
+  const [isSkillsEditOpen, setIsSkillsEditOpen] = useState(false);
+
+  const handleSaveSkills = (updatedSkills) => {
+    setSkills(updatedSkills);
+    saveSkillsToStorage(updatedSkills);
+    showToast("Skills & Technologies updated!");
+  };
 
   const handleSaveProfile = ({ profile: newProfile, education: newEdu }) => {
     setProfile(newProfile);
@@ -398,7 +411,11 @@ export default function App() {
         />
 
         {/* Skills & Technologies */}
-        <SkillsSection />
+        <SkillsSection
+          skills={skills}
+          isAdmin={isAdmin}
+          onEditSkills={() => setIsSkillsEditOpen(true)}
+        />
 
         {/* Contact Info Cards */}
         <ContactSection profile={profile} />
@@ -427,7 +444,8 @@ export default function App() {
       <CvModal
         isOpen={isCvOpen}
         onClose={() => setIsCvOpen(false)}
-        onDownload={handleDownloadFile}
+        profile={profile}
+        skills={skills}
       />
 
       {/* Admin Mode Unlock & Configuration Modal */}
@@ -447,6 +465,16 @@ export default function App() {
           profile={profile}
           education={education}
           onSave={handleSaveProfile}
+        />
+      )}
+
+      {/* Skills / Technologies Editor (Admin Only) */}
+      {isAdmin && (
+        <SkillsEditModal
+          isOpen={isSkillsEditOpen}
+          onClose={() => setIsSkillsEditOpen(false)}
+          skills={skills}
+          onSave={handleSaveSkills}
         />
       )}
 

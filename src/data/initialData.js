@@ -693,3 +693,29 @@ export function saveTrashToStorage(trash) {
     console.error("Error saving trash to localStorage:", e);
   }
 }
+
+// ── Skills persistence ────────────────────────────────────────────────────────
+const SKILLS_KEY = "kurt_alcayde_portfolio_skills_v1";
+
+export function getStoredSkills() {
+  if (typeof window === "undefined") return SKILLS_DATA;
+  try {
+    const saved = localStorage.getItem(SKILLS_KEY);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error("Error reading skills from localStorage:", e);
+  }
+  return SKILLS_DATA;
+}
+
+export function saveSkillsToStorage(skills) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SKILLS_KEY, JSON.stringify(skills));
+  } catch (e) {
+    console.error("Error saving skills to localStorage:", e);
+  }
+}
