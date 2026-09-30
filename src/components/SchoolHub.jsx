@@ -28,7 +28,11 @@ import {
   RotateCcw,
   Plus,
   Lock,
-  Unlock
+  Unlock,
+  GripVertical,
+  Undo2,
+  Trash,
+  Info
 } from "lucide-react";
 import { GithubIcon } from "./BrandIcons";
 
@@ -44,11 +48,17 @@ const CATEGORY_ICONS = {
 
 export default function SchoolHub({
   files,
+  trashFiles = [],
   activeCategory,
   setActiveCategory,
   onOpenUpload,
   onPreviewFile,
   onDeleteFile,
+  onReorderFiles,
+  onMoveToTrash,
+  onRestoreFromTrash,
+  onPermanentDelete,
+  onEmptyTrash,
   onResetFiles,
   onDownloadFile,
   isAdmin = false,
@@ -57,7 +67,13 @@ export default function SchoolHub({
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("grid"); // 'grid' | 'table'
   const [fileTypeFilter, setFileTypeFilter] = useState("all"); // 'all' | 'pdf' | 'zip' | 'docx' | 'url'
-  const [sortBy, setSortBy] = useState("newest"); // 'newest' | 'oldest' | 'name'
+  const [sortBy, setSortBy] = useState("custom"); // 'custom' | 'newest' | 'oldest' | 'name'
+
+  // Drag & drop state
+  const [draggedFile, setDraggedFile] = useState(null);
+  const [isDraggingActive, setIsDraggingActive] = useState(false);
+  const [dropTargetId, setDropTargetId] = useState(null);
+  const [isOverTrashZone, setIsOverTrashZone] = useState(false);
 
   // Filtered and sorted files
   const filteredFiles = useMemo(() => {
@@ -92,6 +108,7 @@ export default function SchoolHub({
         if (sortBy === "name") {
           return a.title.localeCompare(b.title);
         }
+        // 'custom' order: keep original array ordering
         return 0;
       });
   }, [files, activeCategory, searchQuery, fileTypeFilter, sortBy]);
@@ -142,29 +159,108 @@ export default function SchoolHub({
       default:
         return {
           icon: FileCode,
-          label: "FILE",
-          color: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 border-purple-200 dark:border-purple-900/60",
+          label: (file.fileType || "FILE").toUpperCase(),
+          color: "text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
         };
     }
   };
 
+  // Drag Handlers
+  const handleDragStart = (e, file) => {
+    setDraggedFile(file);
+    setIsDraggingActive(true);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", file.id);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedFile(null);
+    setIsDraggingActive(false);
+    setDropTargetId(null);
+    setIsOverTrashZone(false);
+  };
+
+  const handleDragOverCard = (e, targetFile) => {
+    e.preventDefault();
+    if (!draggedFile || draggedFile.id === targetFile.id) return;
+    e.dataTransfer.dropEffect = "move";
+    if (dropTargetId !== targetFile.id) {
+      setDropTargetId(targetFile.id);
+    }
+  };
+
+  const handleDropOnCard = (e, targetFile) => {
+    e.preventDefault();
+    if (!draggedFile || draggedFile.id === targetFile.id) {
+      setDropTargetId(null);
+      return;
+    }
+
+    if (onReorderFiles) {
+      const fromIndex = files.findIndex((f) => f.id === draggedFile.id);
+      const toIndex = files.findIndex((f) => f.id === targetFile.id);
+      if (fromIndex !== -1 && toIndex !== -1) {
+        const reordered = [...files];
+        const [movedItem] = reordered.splice(fromIndex, 1);
+        reordered.splice(toIndex, 0, movedItem);
+        onReorderFiles(reordered);
+        setSortBy("custom");
+      }
+    }
+
+    setDraggedFile(null);
+    setIsDraggingActive(false);
+    setDropTargetId(null);
+  };
+
+  const handleDropOnTrash = (e) => {
+    e.preventDefault();
+    if (!draggedFile) return;
+
+    if (!isAdmin) {
+      if (onOpenAdminModal) onOpenAdminModal();
+      setDraggedFile(null);
+      setIsDraggingActive(false);
+      setIsOverTrashZone(false);
+      return;
+    }
+
+    if (onMoveToTrash) {
+      onMoveToTrash(draggedFile.id);
+    } else if (onDeleteFile) {
+      onDeleteFile(draggedFile.id);
+    }
+
+    setDraggedFile(null);
+    setIsDraggingActive(false);
+    setIsOverTrashZone(false);
+  };
+
   return (
     <section id="school-hub" className="py-20 md:py-28 relative">
+      {/* Background ambient accents */}
+      <div className="absolute top-1/3 right-0 w-96 h-96 bg-rose-500/5 blur-3xl pointer-events-none rounded-full"></div>
+      <div className="absolute bottom-10 left-10 w-80 h-80 bg-amber-500/5 blur-3xl pointer-events-none rounded-full"></div>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        {/* Section Header */}
+        {/* Section Headline & Intro */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold tracking-wider uppercase mb-3">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Interactive School Works &amp; File Vault</span>
+              <span>Interactive School Works &amp; Files Hub</span>
             </div>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              School Works &amp; Files Hub
+              Coursework Vault &amp; Deliverables
             </h2>
-            <p className="mt-2 text-slate-600 dark:text-slate-400 text-base max-w-2xl">
-              Centralized repository for DCIT 26 coursework. Upload, view, filter, preview, 
-              and download laboratory activities, term assignments, exam reviewers, and projects.
+            <p className="mt-3 text-slate-600 dark:text-slate-400 text-sm sm:text-base max-w-2xl leading-relaxed">
+              Explore laboratory outputs, homework assignments, project repositories, and exam materials. 
+              {isAdmin && (
+                <span className="text-rose-600 dark:text-rose-400 font-semibold block mt-1">
+                  ✨ Drag cards to rearrange their order, or drag them into the Deletion dropzone to remove them.
+                </span>
+              )}
             </p>
           </div>
 
@@ -182,7 +278,7 @@ export default function SchoolHub({
                 </button>
 
                 <button
-                  onClick={() => onOpenUpload(activeCategory)}
+                  onClick={() => onOpenUpload(activeCategory === "trash" ? "laboratory" : activeCategory)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-md shadow-rose-600/25 transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -259,418 +355,677 @@ export default function SchoolHub({
                 </button>
               );
             })}
-          </div>
-        </div>
 
-        {/* Filter & Search Bar */}
-        <div className="bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800/90 rounded-2xl p-4 mb-8 shadow-sm">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
-            
-            {/* Search Input */}
-            <div className="relative w-full lg:w-96">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search by title, tag, or keyword..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-800 dark:text-slate-100 transition-all placeholder:text-slate-400"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Filter by file type + Sort + View mode */}
-            <div className="flex flex-wrap items-center justify-between lg:justify-end gap-3 w-full lg:w-auto">
-              
-              {/* File Type Filter */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <Filter className="w-3.5 h-3.5" />
-                <select
-                  value={fileTypeFilter}
-                  onChange={(e) => setFileTypeFilter(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:border-rose-500 cursor-pointer"
-                >
-                  <option value="all">All File Types</option>
-                  <option value="pdf">PDF Documents</option>
-                  <option value="zip">ZIP / Archives</option>
-                  <option value="docx">Word DOCX</option>
-                  <option value="url">Projects / Links</option>
-                </select>
-              </div>
-
-              {/* Sort selector */}
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:border-rose-500 cursor-pointer"
+            {/* DELETION PAGE TAB (Recycle Bin) */}
+            {isAdmin && (
+              <button
+                onClick={() => setActiveCategory("trash")}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsOverTrashZone(true);
+                }}
+                onDragLeave={() => setIsOverTrashZone(false)}
+                onDrop={handleDropOnTrash}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all duration-200 cursor-pointer ml-auto ${
+                  activeCategory === "trash"
+                    ? "bg-red-600 text-white shadow-md shadow-red-600/30"
+                    : isOverTrashZone
+                    ? "bg-red-100 dark:bg-red-950 text-red-600 border-2 border-red-500 scale-105"
+                    : "text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
+                }`}
+                title="View deleted items or drop cards here to delete"
               >
-                <option value="newest">Sort: Newest First</option>
-                <option value="oldest">Sort: Oldest First</option>
-                <option value="name">Sort: File Name A–Z</option>
-              </select>
-
-              {/* Grid vs Table View Switch */}
-              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                <button
-                  onClick={() => setViewMode("grid")}
-                  className={`p-1.5 rounded-md transition-colors ${
-                    viewMode === "grid"
-                      ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                  }`}
-                  title="Card Grid View"
-                >
-                  <Grid className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode("table")}
-                  className={`p-1.5 rounded-md transition-colors ${
-                    viewMode === "table"
-                      ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                  }`}
-                  title="List / Table View"
-                >
-                  <ListIcon className="w-4 h-4" />
-                </button>
-              </div>
-
-            </div>
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Recycle Bin</span>
+                {trashFiles.length > 0 && (
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      activeCategory === "trash"
+                        ? "bg-white/25 text-white"
+                        : "bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300"
+                    }`}
+                  >
+                    {trashFiles.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Content Section: Empty state OR File cards */}
-        {filteredFiles.length === 0 ? (
-          <div className="text-center py-16 px-4 bg-white dark:bg-slate-900/50 border border-dashed border-slate-300 dark:border-slate-800 rounded-3xl">
-            <UploadCloud className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-              No files found
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-6">
-              {searchQuery
-                ? `No submissions matched "${searchQuery}". Try adjusting your search or filter.`
-                : "No files currently uploaded in this category. Upload one to get started!"}
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              {searchQuery && (
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setFileTypeFilter("all");
-                  }}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl"
-                >
-                  Clear Filters
-                </button>
-              )}
-              {isAdmin ? (
-                <button
-                  onClick={() => onOpenUpload(activeCategory)}
-                  className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md cursor-pointer"
-                >
-                  Upload File Now
-                </button>
-              ) : (
-                <button
-                  onClick={onOpenAdminModal}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer"
-                >
-                  Unlock Admin to Upload
-                </button>
-              )}
+        {/* ========================================================
+            IF IN TRASH / DELETION PAGE
+            ======================================================== */}
+        {activeCategory === "trash" ? (
+          <div className="space-y-6">
+            {/* Deletion Dropzone Banner */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsOverTrashZone(true);
+              }}
+              onDragLeave={() => setIsOverTrashZone(false)}
+              onDrop={handleDropOnTrash}
+              className={`p-8 sm:p-12 rounded-3xl border-3 border-dashed transition-all duration-300 flex flex-col items-center justify-center text-center ${
+                isOverTrashZone
+                  ? "border-red-500 bg-red-100/80 dark:bg-red-950/60 text-red-700 dark:text-red-200 scale-[1.01] shadow-xl shadow-red-500/20"
+                  : "border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400"
+              }`}
+            >
+              <div
+                className={`w-16 h-16 rounded-3xl flex items-center justify-center mb-4 transition-transform duration-300 ${
+                  isOverTrashZone
+                    ? "bg-red-600 text-white scale-125 shadow-lg shadow-red-600/40"
+                    : "bg-red-50 dark:bg-red-950/80 text-red-500"
+                }`}
+              >
+                <Trash2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                {isOverTrashZone ? "Release to Delete Card" : "Drop Cards Here to Delete"}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mt-1.5">
+                Drag any schoolwork card from any category and drop it onto this page to move it to the Recycle Bin.
+              </p>
             </div>
-          </div>
-        ) : viewMode === "grid" ? (
-          /* ========================================================
-             GRID CARD VIEW (Rich Modern Cards)
-             ======================================================== */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredFiles.map((file) => {
-              const badge = getFileBadge(file);
-              const BadgeIcon = badge.icon;
-              const isProject = file.category === "projects" || file.fileType === "url";
 
-              return (
-                <div
-                  key={file.id}
-                  className="group relative bg-white dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800/90 rounded-2xl overflow-hidden shadow-xs hover:shadow-xl hover:border-rose-300 dark:hover:border-rose-900/70 transition-all duration-300 flex flex-col"
+            {/* Trash Header Controls */}
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-slate-900 dark:text-white">
+                  Deleted Files ({trashFiles.length})
+                </span>
+                <span className="text-xs text-slate-500">
+                  • Items remain recoverable until emptied
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveCategory("all")}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
-                  {/* If it's a project with thumbnail, show header banner */}
-                  {isProject && file.thumbnail && (
-                    <div className="relative h-44 w-full overflow-hidden bg-slate-950">
-                      <img
-                        src={file.thumbnail}
-                        alt={file.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        onError={(e) => {
-                          e.currentTarget.src =
-                            "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80";
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent"></div>
-                      
-                      {/* Top badges over thumbnail */}
-                      <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border backdrop-blur-md ${badge.color}`}
-                        >
-                          <BadgeIcon className="w-3 h-3" />
-                          <span>{badge.label}</span>
-                        </span>
+                  ← Back to Vault
+                </button>
+                {trashFiles.length > 0 && (
+                  <button
+                    onClick={onEmptyTrash}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors"
+                  >
+                    Empty Recycle Bin
+                  </button>
+                )}
+              </div>
+            </div>
 
-                        {file.score && (
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/90 text-white shadow-xs backdrop-blur-sm">
-                            {file.score}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Project quick links overlay in thumbnail */}
-                      {file.projectLinks && (
-                        <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                          {file.projectLinks.githubUrl && (
-                            <a
-                              href={file.projectLinks.githubUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white text-xs backdrop-blur-md transition-colors"
-                              title="GitHub Repository"
-                            >
-                              <GithubIcon className="w-3.5 h-3.5" />
-                            </a>
-                          )}
-                          {file.projectLinks.liveDemoUrl && (
-                            <a
-                              href={file.projectLinks.liveDemoUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs backdrop-blur-md transition-colors"
-                              title="Live Demo"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Card Main Body */}
-                  <div className="p-5 flex-1 flex flex-col">
-                    {/* Header info (when no thumbnail) */}
-                    {(!isProject || !file.thumbnail) && (
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${badge.color}`}
-                        >
-                          <BadgeIcon className="w-3 h-3" />
-                          <span>{badge.label}</span>
-                        </span>
-
-                        <span
-                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                            file.status?.includes("Graded") || file.status?.includes("Verified") || file.status?.includes("On Time")
-                              ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                              : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
-                          }`}
-                        >
-                          {file.status || "Uploaded"}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Title */}
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 mb-2 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
-                      {file.title}
-                    </h3>
-
-                    {/* Description */}
-                    <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
-                      {file.description}
-                    </p>
-
-                    {/* Tags */}
-                    {file.tags && file.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-4">
-                        {file.tags.slice(0, 3).map((tag, idx) => (
+            {/* Trash List */}
+            {trashFiles.length === 0 ? (
+              <div className="text-center py-16 px-4 bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-3xl">
+                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-slate-900 dark:text-white">
+                  Recycle Bin is Empty
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
+                  You haven&apos;t moved any files to the trash. Drag any card from your portfolio into this area to test deleting.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {trashFiles.map((file) => {
+                  const badge = getFileBadge(file);
+                  const BadgeIcon = badge.icon;
+                  return (
+                    <div
+                      key={file.id}
+                      className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between opacity-80 hover:opacity-100 transition-opacity"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
                           <span
-                            key={idx}
-                            className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badge.color}`}
                           >
-                            #{tag}
+                            <BadgeIcon className="w-3 h-3" />
+                            <span>{badge.label}</span>
                           </span>
-                        ))}
-                        {file.tags.length > 3 && (
-                          <span className="text-[10px] font-medium px-1.5 py-0.5 text-slate-400">
-                            +{file.tags.length - 3}
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {file.category}
                           </span>
-                        )}
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1 line-clamp-1">
+                          {file.title}
+                        </h4>
+                        <p className="text-xs text-slate-500 line-clamp-2 mb-4">
+                          {file.description}
+                        </p>
                       </div>
-                    )}
 
-                    {/* Meta info footer: File size, upload date, score */}
-                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono">{file.fileSize || "1.2 MB"}</span>
-                        <span>•</span>
-                        <span>{file.uploadDate}</span>
-                      </div>
-                      {file.score && (
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                          {file.score}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Card Actions Bar */}
-                    <div className={`grid ${isAdmin ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
-                      <button
-                        onClick={() => onPreviewFile(file)}
-                        className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                        title="Preview file content"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Preview</span>
-                      </button>
-
-                      <button
-                        onClick={() => onDownloadFile(file)}
-                        className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                        title="Download file"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download</span>
-                      </button>
-
-                      {isAdmin && (
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
                         <button
-                          onClick={() => onDeleteFile(file.id)}
-                          className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors cursor-pointer"
-                          title="Delete file"
+                          onClick={() => onRestoreFromTrash && onRestoreFromTrash(file.id)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Restore</span>
+                        </button>
+                        <button
+                          onClick={() => onPermanentDelete && onPermanentDelete(file.id)}
+                          className="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
+                          title="Permanently Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete</span>
                         </button>
-                      )}
+                      </div>
                     </div>
-
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
           /* ========================================================
-             TABLE / LIST VIEW (Clean Institutional Layout)
+             STANDARD WORK VAULT VIEW
              ======================================================== */
-          <div className="overflow-x-auto bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800/90 rounded-2xl shadow-sm">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">
-                  <th className="py-3.5 px-4">Work / File Title</th>
-                  <th className="py-3.5 px-4">Category</th>
-                  <th className="py-3.5 px-4">Type &amp; Size</th>
-                  <th className="py-3.5 px-4">Date / Due</th>
-                  <th className="py-3.5 px-4">Status / Score</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+          <>
+            {/* Filter, Search & View Controls Toolbar */}
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
+              
+              {/* Search Bar */}
+              <div className="relative w-full md:w-96">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by title, tags, or topic..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 shadow-2xs transition-all"
+                />
+              </div>
+
+              {/* Format, Sort & Layout Switcher */}
+              <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+                
+                {/* File Type Filter */}
+                <div className="flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={fileTypeFilter}
+                    onChange={(e) => setFileTypeFilter(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:border-rose-500 cursor-pointer"
+                  >
+                    <option value="all">All File Types</option>
+                    <option value="pdf">PDF Documents</option>
+                    <option value="zip">ZIP / Archives</option>
+                    <option value="docx">Word DOCX</option>
+                    <option value="url">Projects / Links</option>
+                  </select>
+                </div>
+
+                {/* Sort selector */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:border-rose-500 cursor-pointer"
+                >
+                  <option value="custom">Custom Order (Drag &amp; Drop)</option>
+                  <option value="newest">Sort: Newest First</option>
+                  <option value="oldest">Sort: Oldest First</option>
+                  <option value="name">Sort: File Name A–Z</option>
+                </select>
+
+                {/* Grid vs Table View Switch */}
+                <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      viewMode === "grid"
+                        ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs"
+                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                    }`}
+                    title="Card Grid View"
+                  >
+                    <Grid className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("table")}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      viewMode === "table"
+                        ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs"
+                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                    }`}
+                    title="List / Table View"
+                  >
+                    <ListIcon className="w-4 h-4" />
+                  </button>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Drag & Drop Reorder Tip Badge */}
+            {isAdmin && filteredFiles.length > 1 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 mb-4 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 text-xs w-fit">
+                <GripVertical className="w-3.5 h-3.5 text-rose-500" />
+                <span>Drag any card by its handle to rearrange, or drag it into the bottom trash bin to delete.</span>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {filteredFiles.length === 0 ? (
+              <div className="text-center py-16 px-4 bg-white dark:bg-slate-900/50 border border-dashed border-slate-300 dark:border-slate-800 rounded-3xl">
+                <UploadCloud className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
+                  No files found
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-6">
+                  {searchQuery
+                    ? `No submissions matched "${searchQuery}". Try adjusting your search or filter.`
+                    : "No files currently uploaded in this category. Upload one to get started!"}
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  {searchQuery && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setFileTypeFilter("all");
+                      }}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                  {isAdmin ? (
+                    <button
+                      onClick={() => onOpenUpload(activeCategory)}
+                      className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md cursor-pointer"
+                    >
+                      Upload File Now
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onOpenAdminModal}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer"
+                    >
+                      Unlock Admin to Upload
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : viewMode === "grid" ? (
+              /* ========================================================
+                 GRID CARD VIEW (Draggable & Reorderable)
+                 ======================================================== */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredFiles.map((file) => {
                   const badge = getFileBadge(file);
                   const BadgeIcon = badge.icon;
+                  const isProject = file.category === "projects" || file.fileType === "url";
+                  const isBeingDragged = draggedFile?.id === file.id;
+                  const isDropTarget = dropTargetId === file.id && !isBeingDragged;
 
                   return (
-                    <tr
+                    <div
                       key={file.id}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      draggable={isAdmin}
+                      onDragStart={(e) => handleDragStart(e, file)}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={(e) => handleDragOverCard(e, file)}
+                      onDrop={(e) => handleDropOnCard(e, file)}
+                      className={`group relative bg-white dark:bg-slate-900/80 border rounded-2xl overflow-hidden shadow-xs transition-all duration-300 flex flex-col ${
+                        isBeingDragged
+                          ? "opacity-35 scale-95 border-dashed border-rose-500 shadow-none ring-2 ring-rose-400"
+                          : isDropTarget
+                          ? "border-rose-500 ring-2 ring-rose-500 scale-[1.02] shadow-xl"
+                          : "border-slate-200/90 dark:border-slate-800/90 hover:shadow-xl hover:border-rose-300 dark:hover:border-rose-900/70"
+                      } ${isAdmin ? "cursor-grab active:cursor-grabbing" : ""}`}
                     >
-                      {/* Title & tags */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 dark:text-white line-clamp-1">
-                          {file.title}
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-mono mt-0.5 line-clamp-1">
-                          {file.fileName || "online-submission"}
-                        </div>
-                      </td>
-
-                      {/* Category */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="capitalize text-slate-600 dark:text-slate-300 font-medium">
-                          {file.category}
-                        </span>
-                      </td>
-
-                      {/* Type & Size */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badge.color}`}
+                      {/* Drag Grip Handle for Admin */}
+                      {isAdmin && (
+                        <div
+                          className="absolute top-2.5 right-2.5 z-20 p-1.5 rounded-lg bg-black/40 hover:bg-black/70 text-white backdrop-blur-md opacity-60 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+                          title="Drag to rearrange card or drop in trash to delete"
                         >
-                          <BadgeIcon className="w-3 h-3" />
-                          <span>{badge.label}</span>
-                        </span>
-                        <span className="ml-2 text-slate-400 font-mono">
-                          {file.fileSize || "N/A"}
-                        </span>
-                      </td>
+                          <GripVertical className="w-3.5 h-3.5" />
+                        </div>
+                      )}
 
-                      {/* Date */}
-                      <td className="py-3.5 px-4 whitespace-nowrap text-slate-500">
-                        {file.uploadDate}
-                      </td>
+                      {/* If it's a project with thumbnail, show header banner */}
+                      {isProject && file.thumbnail && (
+                        <div className="relative h-44 w-full overflow-hidden bg-slate-950">
+                          <img
+                            src={file.thumbnail}
+                            alt={file.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              e.currentTarget.src =
+                                "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent"></div>
+                          
+                          {/* Top badges over thumbnail */}
+                          <div className="absolute top-3 left-3 right-10 flex items-center justify-between">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border backdrop-blur-md ${badge.color}`}
+                            >
+                              <BadgeIcon className="w-3 h-3" />
+                              <span>{badge.label}</span>
+                            </span>
 
-                      {/* Status / Score */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                          {file.score || file.status || "Submitted"}
-                        </span>
-                      </td>
+                            {file.score && (
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/90 text-white shadow-xs backdrop-blur-sm">
+                                {file.score}
+                              </span>
+                            )}
+                          </div>
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1.5">
+                          {/* Project quick links overlay in thumbnail */}
+                          {file.projectLinks && (
+                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                              {file.projectLinks.githubUrl && (
+                                <a
+                                  href={file.projectLinks.githubUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white text-xs backdrop-blur-md transition-colors"
+                                  title="GitHub Repository"
+                                >
+                                  <GithubIcon className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              {file.projectLinks.liveDemoUrl && (
+                                <a
+                                  href={file.projectLinks.liveDemoUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs backdrop-blur-md transition-colors"
+                                  title="Live Demo"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Card Main Body */}
+                      <div className="p-5 flex-1 flex flex-col">
+                        {/* Header info (when no thumbnail) */}
+                        {(!isProject || !file.thumbnail) && (
+                          <div className="flex items-center justify-between gap-2 mb-3 pr-8">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${badge.color}`}
+                            >
+                              <BadgeIcon className="w-3 h-3" />
+                              <span>{badge.label}</span>
+                            </span>
+
+                            <span
+                              className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                file.status?.includes("Graded") || file.status?.includes("Verified") || file.status?.includes("On Time")
+                                  ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                                  : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                              }`}
+                            >
+                              {file.status || "Uploaded"}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Title */}
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 mb-2 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                          {file.title}
+                        </h3>
+
+                        {/* Description */}
+                        <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
+                          {file.description}
+                        </p>
+
+                        {/* Tags */}
+                        {file.tags && file.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-4">
+                            {file.tags.slice(0, 3).map((tag, idx) => (
+                              <span
+                                key={idx}
+                                className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                            {file.tags.length > 3 && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 text-slate-400">
+                                +{file.tags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Meta info footer */}
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono">{file.fileSize || "1.2 MB"}</span>
+                            <span>•</span>
+                            <span>{file.uploadDate}</span>
+                          </div>
+                          {file.score && (
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              {file.score}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Card Actions Bar */}
+                        <div className={`grid ${isAdmin ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
                           <button
                             onClick={() => onPreviewFile(file)}
-                            className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-                            title="Preview File"
+                            className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                            title="Preview file content"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
                           </button>
+
                           <button
                             onClick={() => onDownloadFile(file)}
-                            className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                            title="Download File"
+                            className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                            title="Download file"
                           >
-                            <Download className="w-4 h-4" />
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
                           </button>
+
                           {isAdmin && (
                             <button
-                              onClick={() => onDeleteFile(file.id)}
-                              className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                              title="Delete"
+                              onClick={() => {
+                                if (onMoveToTrash) {
+                                  onMoveToTrash(file.id);
+                                } else if (onDeleteFile) {
+                                  onDeleteFile(file.id);
+                                }
+                              }}
+                              className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors cursor-pointer"
+                              title="Delete file"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
                             </button>
                           )}
                         </div>
-                      </td>
-                    </tr>
+
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            ) : (
+              /* ========================================================
+                 TABLE / LIST VIEW (Draggable Rows)
+                 ======================================================== */
+              <div className="overflow-x-auto bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800/90 rounded-2xl shadow-sm">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">
+                      {isAdmin && <th className="py-3.5 px-3 w-8"></th>}
+                      <th className="py-3.5 px-4">Work / File Title</th>
+                      <th className="py-3.5 px-4">Category</th>
+                      <th className="py-3.5 px-4">Type &amp; Size</th>
+                      <th className="py-3.5 px-4">Date / Due</th>
+                      <th className="py-3.5 px-4">Status / Score</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                    {filteredFiles.map((file) => {
+                      const badge = getFileBadge(file);
+                      const BadgeIcon = badge.icon;
+                      const isBeingDragged = draggedFile?.id === file.id;
+                      const isDropTarget = dropTargetId === file.id && !isBeingDragged;
+
+                      return (
+                        <tr
+                          key={file.id}
+                          draggable={isAdmin}
+                          onDragStart={(e) => handleDragStart(e, file)}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={(e) => handleDragOverCard(e, file)}
+                          onDrop={(e) => handleDropOnCard(e, file)}
+                          className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
+                            isBeingDragged ? "opacity-30 bg-rose-50" : isDropTarget ? "bg-rose-100/60 dark:bg-rose-950/40" : ""
+                          }`}
+                        >
+                          {isAdmin && (
+                            <td className="py-3.5 px-3 text-slate-400 cursor-grab active:cursor-grabbing">
+                              <GripVertical className="w-4 h-4" />
+                            </td>
+                          )}
+
+                          {/* Title & tags */}
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-slate-900 dark:text-white line-clamp-1">
+                              {file.title}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5 line-clamp-1">
+                              {file.fileName || "online-submission"}
+                            </div>
+                          </td>
+
+                          {/* Category */}
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="capitalize text-slate-600 dark:text-slate-300 font-medium">
+                              {file.category}
+                            </span>
+                          </td>
+
+                          {/* Type & Size */}
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badge.color}`}
+                            >
+                              <BadgeIcon className="w-3 h-3" />
+                              <span>{badge.label}</span>
+                            </span>
+                            <span className="ml-2 text-slate-400 font-mono">
+                              {file.fileSize || "N/A"}
+                            </span>
+                          </td>
+
+                          {/* Date */}
+                          <td className="py-3.5 px-4 whitespace-nowrap text-slate-500">
+                            {file.uploadDate}
+                          </td>
+
+                          {/* Status / Score */}
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              {file.score || file.status || "Submitted"}
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                onClick={() => onPreviewFile(file)}
+                                className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                title="Preview File"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => onDownloadFile(file)}
+                                className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                title="Download File"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => {
+                                    if (onMoveToTrash) {
+                                      onMoveToTrash(file.id);
+                                    } else if (onDeleteFile) {
+                                      onDeleteFile(file.id);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
 
       </div>
+
+      {/* ========================================================
+          FLOATING DRAG-TO-DELETE DOCK (Active while dragging cards)
+          ======================================================== */}
+      {isDraggingActive && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            setIsOverTrashZone(true);
+          }}
+          onDragLeave={() => setIsOverTrashZone(false)}
+          onDrop={handleDropOnTrash}
+          className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] px-7 py-4 rounded-3xl border-2 shadow-2xl backdrop-blur-xl transition-all duration-300 flex items-center gap-4 cursor-pointer ${
+            isOverTrashZone
+              ? "bg-red-600/95 border-white text-white scale-110 shadow-red-600/60 ring-4 ring-red-400 animate-pulse"
+              : "bg-slate-900/95 dark:bg-black/95 border-red-500/60 text-white shadow-red-950/50"
+          }`}
+        >
+          <div
+            className={`p-3 rounded-2xl transition-colors ${
+              isOverTrashZone
+                ? "bg-white text-red-600"
+                : "bg-red-500/20 text-red-400"
+            }`}
+          >
+            <Trash2 className="w-6 h-6 animate-bounce" />
+          </div>
+          <div>
+            <div className="font-extrabold text-sm sm:text-base">
+              {isOverTrashZone ? "Release to Delete!" : "Drop Here to Delete"}
+            </div>
+            <div className="text-xs text-red-200">
+              {draggedFile
+                ? `"${draggedFile.title.slice(0, 32)}..." will be moved to Recycle Bin`
+                : "Drag card onto this zone to remove"}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

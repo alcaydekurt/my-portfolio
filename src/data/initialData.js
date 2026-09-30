@@ -667,3 +667,29 @@ export function saveEducationToStorage(education) {
     console.error("Error saving education to localStorage:", e);
   }
 }
+
+// ── Recycle Bin / Trash persistence ──────────────────────────────────────────
+const TRASH_KEY = "kurt_alcayde_portfolio_trash_v1";
+
+export function getStoredTrash() {
+  if (typeof window === "undefined") return [];
+  try {
+    const saved = localStorage.getItem(TRASH_KEY);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error("Error reading trash from localStorage:", e);
+  }
+  return [];
+}
+
+export function saveTrashToStorage(trash) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(TRASH_KEY, JSON.stringify(trash));
+  } catch (e) {
+    console.error("Error saving trash to localStorage:", e);
+  }
+}

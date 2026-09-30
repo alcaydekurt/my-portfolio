@@ -19,7 +19,9 @@ import {
   getStoredProfile,
   saveProfileToStorage,
   getStoredEducation,
-  saveEducationToStorage
+  saveEducationToStorage,
+  getStoredTrash,
+  saveTrashToStorage
 } from "./data/initialData";
 
 export default function App() {
@@ -113,6 +115,7 @@ export default function App() {
 
   // Files State Management (synced with localStorage)
   const [files, setFiles] = useState(() => getStoredFiles());
+  const [trashFiles, setTrashFiles] = useState(() => getStoredTrash());
   const [activeCategory, setActiveCategory] = useState("all");
 
   // Profile & Education State (synced with localStorage)
@@ -152,27 +155,91 @@ export default function App() {
     showToast(`"${newFile.title}" successfully added to School Hub!`);
   };
 
-  // Delete file handler (only accessible in admin mode)
-  const handleDeleteFile = (fileId) => {
+  // Reorder files handler (via drag and drop)
+  const handleReorderFiles = (reorderedFiles) => {
+    setFiles(reorderedFiles);
+    saveFilesToStorage(reorderedFiles);
+  };
+
+  // Move file to Trash (via drag to delete or delete button)
+  const handleMoveToTrash = (fileId) => {
     if (!isAdmin) {
       showToast("Delete action is restricted in read-only mode.", "error");
       return;
     }
 
     const fileToDelete = files.find((f) => f.id === fileId);
+    if (!fileToDelete) return;
+
+    const updatedFiles = files.filter((f) => f.id !== fileId);
+    const updatedTrash = [
+      { ...fileToDelete, deletedAt: new Date().toISOString() },
+      ...trashFiles.filter((t) => t.id !== fileId)
+    ];
+
+    setFiles(updatedFiles);
+    saveFilesToStorage(updatedFiles);
+    setTrashFiles(updatedTrash);
+    saveTrashToStorage(updatedTrash);
+
+    showToast(`Moved "${fileToDelete.title}" to Recycle Bin.`, "info");
+    if (previewFile?.id === fileId) {
+      setPreviewFile(null);
+    }
+  };
+
+  // Restore file from Trash back to active files
+  const handleRestoreFromTrash = (fileId) => {
+    if (!isAdmin) return;
+    const fileToRestore = trashFiles.find((f) => f.id === fileId);
+    if (!fileToRestore) return;
+
+    const { deletedAt, ...cleanedFile } = fileToRestore;
+    const updatedTrash = trashFiles.filter((f) => f.id !== fileId);
+    const updatedFiles = [cleanedFile, ...files];
+
+    setFiles(updatedFiles);
+    saveFilesToStorage(updatedFiles);
+    setTrashFiles(updatedTrash);
+    saveTrashToStorage(updatedTrash);
+
+    showToast(`Restored "${cleanedFile.title}" to vault!`, "success");
+  };
+
+  // Permanently delete an item from Trash
+  const handlePermanentDelete = (fileId) => {
+    if (!isAdmin) return;
+    const fileToDelete = trashFiles.find((f) => f.id === fileId);
     if (
       window.confirm(
-        `Are you sure you want to delete "${fileToDelete?.title || "this file"}"?`
+        `Permanently delete "${fileToDelete?.title || "this file"}"? This cannot be undone.`
       )
     ) {
-      const updated = files.filter((f) => f.id !== fileId);
-      setFiles(updated);
-      saveFilesToStorage(updated);
-      showToast(`Removed "${fileToDelete?.title || "item"}" from vault.`, "info");
-      if (previewFile?.id === fileId) {
-        setPreviewFile(null);
-      }
+      const updatedTrash = trashFiles.filter((f) => f.id !== fileId);
+      setTrashFiles(updatedTrash);
+      saveTrashToStorage(updatedTrash);
+      showToast("Item permanently removed.", "info");
     }
+  };
+
+  // Empty entire Recycle Bin
+  const handleEmptyTrash = () => {
+    if (!isAdmin) return;
+    if (trashFiles.length === 0) return;
+    if (
+      window.confirm(
+        `Are you sure you want to permanently delete all ${trashFiles.length} item(s) in the Recycle Bin?`
+      )
+    ) {
+      setTrashFiles([]);
+      saveTrashToStorage([]);
+      showToast("Recycle Bin emptied.", "info");
+    }
+  };
+
+  // Delete file handler (wrapper for move to trash)
+  const handleDeleteFile = (fileId) => {
+    handleMoveToTrash(fileId);
   };
 
   // Reset to sample dataset (only accessible in admin mode)
@@ -245,11 +312,17 @@ export default function App() {
         {/* School Works & File Hub (Flagship Feature) */}
         <SchoolHub
           files={files}
+          trashFiles={trashFiles}
           activeCategory={activeCategory}
           setActiveCategory={setActiveCategory}
           onOpenUpload={handleOpenUpload}
           onPreviewFile={(file) => setPreviewFile(file)}
           onDeleteFile={handleDeleteFile}
+          onReorderFiles={handleReorderFiles}
+          onMoveToTrash={handleMoveToTrash}
+          onRestoreFromTrash={handleRestoreFromTrash}
+          onPermanentDelete={handlePermanentDelete}
+          onEmptyTrash={handleEmptyTrash}
           onResetFiles={handleResetFiles}
           onDownloadFile={handleDownloadFile}
           isAdmin={isAdmin}
