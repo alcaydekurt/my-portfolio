@@ -284,8 +284,9 @@ export default function ProfileEditModal({ isOpen, onClose, profile, education, 
               <FieldInput label="Bio / Short Description" value={form.bio || ""} onChange={(v) => updateField("bio", v)} rows={3} placeholder="Passionate IT scholar…" />
               <div className="grid grid-cols-2 gap-3">
                 <FieldInput label="Email" value={form.email || ""} onChange={(v) => updateField("email", v)} type="email" />
-                <FieldInput label="Location" value={form.location || ""} onChange={(v) => updateField("location", v)} />
+                <FieldInput label="Phone" value={form.phone || ""} onChange={(v) => updateField("phone", v)} placeholder="+63 912 345 6789" />
               </div>
+              <FieldInput label="Location" value={form.location || ""} onChange={(v) => updateField("location", v)} placeholder="Cavite, Philippines" />
 
               <div>
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">

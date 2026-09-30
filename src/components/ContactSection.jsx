@@ -6,10 +6,11 @@ import {
   Copy,
   Check,
   Sparkles,
+  Edit3,
 } from "lucide-react";
 import { INITIAL_PROFILE } from "../data/initialData";
 
-export default function ContactSection({ profile = INITIAL_PROFILE }) {
+export default function ContactSection({ profile = INITIAL_PROFILE, isAdmin = false, onEditContact }) {
   const [copiedEmail, setCopiedEmail] = useState(false);
 
   const currentProfile = profile || INITIAL_PROFILE;
@@ -37,6 +38,18 @@ export default function ContactSection({ profile = INITIAL_PROFILE }) {
             Feel free to reach out for academic inquiries, team project opportunities, 
             or questions regarding DCIT 26 coursework deliverables.
           </p>
+
+          {/* Admin Edit Button */}
+          {isAdmin && (
+            <button
+              onClick={onEditContact}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors shadow-sm cursor-pointer"
+              title="Edit contact info (Admin only)"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Contact Info</span>
+            </button>
+          )}
         </div>
 
         {/* Reference-Inspired Top 3 Contact Cards Strip (Directly matching Image 3!) */}

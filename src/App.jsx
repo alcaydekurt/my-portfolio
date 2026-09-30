@@ -418,7 +418,11 @@ export default function App() {
         />
 
         {/* Contact Info Cards */}
-        <ContactSection profile={profile} />
+        <ContactSection
+          profile={profile}
+          isAdmin={isAdmin}
+          onEditContact={() => setIsProfileEditOpen(true)}
+        />
       </main>
 
       {/* Footer */}
