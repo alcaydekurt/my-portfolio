@@ -214,6 +214,29 @@ function createCompliantPdf({ title, category, status, score, description, date,
   return new Blob([pdfText], { type: "application/pdf" });
 }
 
+export function dataUrlToBlob(dataUrl) {
+  try {
+    const parts = dataUrl.split(";base64,");
+    const contentType = parts[0].split(":")[1] || "application/octet-stream";
+    const byteCharacters = atob(parts[1]);
+    const byteArrays = [];
+    const sliceSize = 1024;
+    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+      const slice = byteCharacters.slice(offset, offset + sliceSize);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      byteArrays.push(byteArray);
+    }
+    return new Blob(byteArrays, { type: contentType });
+  } catch (err) {
+    console.error("dataUrlToBlob conversion failed:", err);
+    return null;
+  }
+}
+
 /**
  * Downloads a file to the user's computer without corruption.
  */
@@ -237,27 +260,23 @@ export async function downloadFileSafely(file) {
 
   // A. REAL UPLOADED FILE AVAILABLE
   if (fileData) {
-    // If it's a data URL:
-    if (typeof fileData === "string" && fileData.startsWith("data:")) {
-      const link = document.createElement("a");
-      link.href = fileData;
-      link.download = rawFilename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return;
+    let blob = null;
+
+    if (fileData instanceof Blob) {
+      blob = fileData;
+    } else if (typeof fileData === "string" && fileData.startsWith("data:")) {
+      blob = dataUrlToBlob(fileData);
     }
 
-    // If it's a Blob or Blob URL:
-    if (fileData instanceof Blob) {
-      const url = URL.createObjectURL(fileData);
+    if (blob) {
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.download = rawFilename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
       return;
     }
   }

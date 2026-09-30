@@ -67,7 +67,8 @@ export default function SchoolHub({
   onResetFiles,
   onDownloadFile,
   isAdmin = false,
-  onOpenAdminModal
+  onOpenAdminModal,
+  onAttachFile
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("grid"); // 'grid' | 'table'
@@ -977,6 +978,25 @@ export default function SchoolHub({
                             <span>Download</span>
                           </button>
 
+                          {isAdmin && onAttachFile && (
+                            <label
+                              className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors cursor-pointer"
+                              title="Attach or replace real file"
+                            >
+                              <UploadCloud className="w-3.5 h-3.5" />
+                              <span>Replace</span>
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => {
+                                  if (e.target.files?.[0]) {
+                                    onAttachFile(file.id, e.target.files[0]);
+                                  }
+                                }}
+                              />
+                            </label>
+                          )}
+
                           {isAdmin && (
                             <button
                               onClick={() => {
@@ -1137,6 +1157,23 @@ export default function SchoolHub({
                               >
                                 <Download className="w-4 h-4" />
                               </button>
+                              {isAdmin && onAttachFile && (
+                                <label
+                                  className="p-1.5 rounded-lg text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer"
+                                  title="Attach or replace real file"
+                                >
+                                  <UploadCloud className="w-4 h-4" />
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      if (e.target.files?.[0]) {
+                                        onAttachFile(file.id, e.target.files[0]);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              )}
                               {isAdmin && (
                                 <button
                                   onClick={() => {

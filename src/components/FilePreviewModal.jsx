@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Download,
@@ -16,10 +16,59 @@ import {
   ZoomOut
 } from "lucide-react";
 import { GithubIcon } from "./BrandIcons";
+import { dataUrlToBlob } from "../utils/fileDownloader";
+import { getFileFromDB } from "../utils/fileStorage";
 
 export default function FilePreviewModal({ file, isOpen, onClose, onDownload }) {
   const [copied, setCopied] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [hasBinary, setHasBinary] = useState(false);
+
+  useEffect(() => {
+    let activeUrl = null;
+    let isCancelled = false;
+
+    async function resolveFileBinary() {
+      let data = file?.fileData;
+      if (!data && file?.id) {
+        const record = await getFileFromDB(file.id);
+        if (record?.fileData) {
+          data = record.fileData;
+        }
+      }
+
+      if (isCancelled) return;
+
+      if (data) {
+        setHasBinary(true);
+        if (data instanceof Blob) {
+          activeUrl = URL.createObjectURL(data);
+          setBlobUrl(activeUrl);
+        } else if (typeof data === "string" && data.startsWith("data:")) {
+          const blob = dataUrlToBlob(data);
+          if (blob) {
+            activeUrl = URL.createObjectURL(blob);
+            setBlobUrl(activeUrl);
+          }
+        }
+      } else {
+        setHasBinary(false);
+        setBlobUrl(null);
+      }
+    }
+
+    if (isOpen && file) {
+      resolveFileBinary();
+    }
+
+    return () => {
+      isCancelled = true;
+      if (activeUrl) {
+        URL.revokeObjectURL(activeUrl);
+      }
+    };
+  }, [file, isOpen]);
 
   if (!isOpen || !file) return null;
 
@@ -179,42 +228,83 @@ export default function FilePreviewModal({ file, isOpen, onClose, onDownload }) 
                 </div>
               )}
             </div>
-          ) : file.previewContent?.type === "code" || file.fileType === "zip" ? (
-            /* CODE PREVIEW BOX */
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                <span>Source Code Preview (Excerpt)</span>
-                {file.previewContent?.codeSnippet && (
-                  <button
-                    onClick={() => handleCopyCode(file.previewContent.codeSnippet)}
-                    className="flex items-center gap-1 text-slate-600 dark:text-slate-300 hover:text-rose-500"
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copied ? "Copied!" : "Copy Snippet"}</span>
-                  </button>
-                )}
-              </div>
-              <div className="bg-slate-950 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto border border-slate-800 shadow-inner">
-                <pre>{file.previewContent?.codeSnippet || `// File: ${file.fileName}\n// Lab activity deliverables packaged into archive.\n// Verified against DCIT 26 rubrics.`}</pre>
-              </div>
-            </div>
-          ) : file.fileType === "image" && file.fileData ? (
+          ) : file.fileType === "image" && (blobUrl || file.fileData) ? (
             /* REAL IMAGE PREVIEW */
             <div className="flex justify-center p-4 bg-slate-100 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800">
               <img
-                src={file.fileData}
+                src={blobUrl || file.fileData}
                 alt={file.title}
                 className="max-h-[520px] rounded-xl object-contain shadow-md"
               />
             </div>
-          ) : file.fileType === "pdf" && file.fileData ? (
-            /* REAL EMBEDDED PDF VIEWER */
+          ) : file.fileType === "pdf" && blobUrl ? (
+            /* REAL EMBEDDED PDF VIEWER (BLOB URL) */
             <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md bg-slate-900">
-              <iframe
-                src={file.fileData}
-                title={file.title}
-                className="w-full h-[540px] border-none"
-              />
+              <object
+                data={blobUrl}
+                type="application/pdf"
+                className="w-full h-[540px]"
+              >
+                <iframe
+                  src={blobUrl}
+                  title={file.title}
+                  className="w-full h-[540px] border-none"
+                />
+              </object>
+            </div>
+          ) : file.fileType === "code" && file.previewContent?.codeSnippet ? (
+            /* CODE PREVIEW BOX */
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                <span>Source Code Preview (Excerpt)</span>
+                <button
+                  onClick={() => handleCopyCode(file.previewContent.codeSnippet)}
+                  className="flex items-center gap-1 text-slate-600 dark:text-slate-300 hover:text-rose-500"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copied ? "Copied!" : "Copy Snippet"}</span>
+                </button>
+              </div>
+              <div className="bg-slate-950 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto border border-slate-800 shadow-inner">
+                <pre>{file.previewContent.codeSnippet}</pre>
+              </div>
+            </div>
+          ) : hasBinary ? (
+            /* AUTHENTIC DELIVERABLE FILE DETAILS */
+            <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto shadow-sm">
+                {file.fileType === "zip" ? (
+                  <FileArchive className="w-8 h-8" />
+                ) : file.fileType === "code" ? (
+                  <FileCode className="w-8 h-8" />
+                ) : (
+                  <FileText className="w-8 h-8" />
+                )}
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-slate-900 dark:text-white font-mono">
+                  {file.fileName}
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Authentic Coursework File • {file.fileSize} • Uploaded {file.uploadDate}
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-800">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Verified Deliverable In Archive</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+                This item is stored as an authentic binary deliverable ({file.fileType.toUpperCase()}). You can download it directly below to open in your desktop software.
+              </p>
+              <div className="pt-2">
+                <button
+                  onClick={() => onDownload(file)}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download Authentic {file.fileName}</span>
+                </button>
+              </div>
             </div>
           ) : (
             /* DOCUMENT / PDF VIEWER SIMULATOR */

@@ -606,9 +606,16 @@ export function getStoredFiles() {
 }
 
 export function saveFilesToStorage(files) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !files) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(files));
+    const sanitized = files.map((f) => {
+      if (f.fileData && f.fileData.length > 5000) {
+        const { fileData, ...rest } = f;
+        return rest;
+      }
+      return f;
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
   } catch (e) {
     console.error("Error saving files to localStorage:", e);
   }

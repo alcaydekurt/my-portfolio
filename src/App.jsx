@@ -28,7 +28,7 @@ import {
 } from "./data/initialData";
 import { fetchCloudData, saveCloudData } from "./services/cloudStore";
 import { downloadFileSafely } from "./utils/fileDownloader";
-import { getAllStoredFilesFromDB, removeFileFromDB } from "./utils/fileStorage";
+import { getAllStoredFilesFromDB, removeFileFromDB, storeFileInDB } from "./utils/fileStorage";
 
 export default function App() {
   // Theme state: dark mode toggle
@@ -226,6 +226,76 @@ export default function App() {
     saveFilesToStorage(updated);
     showToast(`"${newFile.title}" successfully added to School Hub!`);
     saveAllCloud({ files: updated });
+  };
+
+  // Attach / replace real file on an existing coursework card
+  const handleAttachRealFile = async (fileId, fileObj) => {
+    if (!isAdmin || !fileObj) return;
+
+    showToast(`Attaching ${fileObj.name}...`);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(fileObj);
+      });
+
+      await storeFileInDB(fileId, dataUrl, fileObj.name, fileObj.type);
+
+      const ext = fileObj.name.split(".").pop().toLowerCase();
+      let type = "other";
+      if (["pdf"].includes(ext)) type = "pdf";
+      else if (["zip", "rar", "7z"].includes(ext)) type = "zip";
+      else if (["doc", "docx"].includes(ext)) type = "docx";
+      else if (["jpg", "jpeg", "png", "webp"].includes(ext)) type = "image";
+      else if (["js", "jsx", "ts", "tsx", "html", "css", "py", "sql"].includes(ext)) type = "code";
+
+      let codeSnippet = "";
+      if (type === "code" || ["txt", "md", "json"].includes(ext)) {
+        try {
+          codeSnippet = await new Promise((resolve) => {
+            const tr = new FileReader();
+            tr.onload = () => resolve((tr.result || "").slice(0, 5000));
+            tr.onerror = () => resolve("");
+            tr.readAsText(fileObj);
+          });
+        } catch (e) {}
+      }
+
+      const sizeMB = (fileObj.size / (1024 * 1024)).toFixed(1) + " MB";
+
+      const updated = files.map((f) => {
+        if (f.id === fileId) {
+          return {
+            ...f,
+            fileName: fileObj.name,
+            fileSize: sizeMB,
+            fileType: type,
+            mimeType: fileObj.type || "application/octet-stream",
+            fileData: dataUrl,
+            uploadDate: new Date().toISOString().split("T")[0],
+            submissionDate: new Date().toLocaleString(),
+            thumbnail: type === "image" ? dataUrl : f.thumbnail,
+            previewContent: {
+              ...f.previewContent,
+              type: type === "pdf" ? "pdf-doc" : type === "code" ? "code" : type === "image" ? "image" : "document",
+              fileName: fileObj.name,
+              codeSnippet: codeSnippet || f.previewContent?.codeSnippet,
+            },
+          };
+        }
+        return f;
+      });
+
+      setFiles(updated);
+      saveFilesToStorage(updated);
+      saveAllCloud({ files: updated });
+      showToast(`Attached "${fileObj.name}" successfully!`, "success");
+    } catch (err) {
+      console.error("Attach file failed:", err);
+      showToast("Failed to attach file.", "error");
+    }
   };
 
   // Reorder files handler (via drag and drop)
@@ -461,6 +531,7 @@ export default function App() {
           onDownloadFile={handleDownloadFile}
           isAdmin={isAdmin}
           onOpenAdminModal={() => setIsAdminModalOpen(true)}
+          onAttachFile={handleAttachRealFile}
         />
 
         {/* About Me & Academic Highlights */}
